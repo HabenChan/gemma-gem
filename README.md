@@ -87,3 +87,5 @@ The offscreen document logs are the most useful — they show model loading, pro
 ## Notes
 
 The `agent/` directory has zero dependencies. It defines interfaces (`ModelBackend`, `ToolExecutor`) and can be extracted to a standalone library.
+
+...
