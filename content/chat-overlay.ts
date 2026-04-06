@@ -159,15 +159,24 @@ const STYLES = `
   .message-agent h1, .message-agent h2, .message-agent h3 {
     font-size: 14px; font-weight: 600; color: #c4b5fd; margin: 8px 0 4px 0;
   }
+  .message-stopped {
+    align-self: flex-start; background: rgba(244, 63, 94, 0.1);
+    border: 1px solid rgba(244, 63, 94, 0.2); font-size: 12px; color: #fb7185;
+  }
   .message-tool {
     align-self: flex-start; background: rgba(16, 185, 129, 0.1);
     border: 1px solid rgba(16, 185, 129, 0.2); font-size: 12px; color: #6ee7b7; font-family: monospace;
+    opacity: 0.4; transition: opacity 0.2s ease;
   }
+  .message-tool:hover { opacity: 1; }
   .message-thinking {
-    align-self: flex-start; background: rgba(251, 191, 36, 0.1);
-    border: 1px solid rgba(251, 191, 36, 0.15); font-size: 12px; color: #fbbf24; font-style: italic;
+    align-self: flex-start; background: rgba(103, 232, 249, 0.1);
+    border: 1px solid rgba(103, 232, 249, 0.15); font-size: 12px; color: #67e8f9; font-style: italic;
     cursor: pointer; user-select: none;
+    opacity: 0.4; transition: opacity 0.2s ease;
   }
+  .message-thinking:hover { opacity: 1; }
+  .message-thinking.pinned { opacity: 1; }
   .thinking-header {
     font-weight: 600; margin-bottom: 4px;
   }
@@ -188,7 +197,7 @@ const STYLES = `
   .message-thinking .thinking-content p { margin: 0 0 8px 0; }
   .message-thinking .thinking-content p:last-child { margin-bottom: 0; }
   .message-thinking .thinking-content code {
-    background: rgba(251, 191, 36, 0.15); padding: 1px 5px; border-radius: 3px;
+    background: rgba(103, 232, 249, 0.15); padding: 1px 5px; border-radius: 3px;
     font-size: 13px; font-family: 'SF Mono', Menlo, Consolas, monospace;
   }
   .message-thinking .thinking-content pre {
@@ -198,8 +207,8 @@ const STYLES = `
   .message-thinking .thinking-content pre code { background: none; padding: 0; }
   .message-thinking .thinking-content ul, .message-thinking .thinking-content ol { margin: 4px 0; padding-left: 20px; }
   .message-thinking .thinking-content li { margin: 2px 0; }
-  .message-thinking .thinking-content strong { color: #fbbf24; }
-  .message-thinking .thinking-content a { color: #fcd34d; }
+  .message-thinking .thinking-content strong { color: #67e8f9; }
+  .message-thinking .thinking-content a { color: #67e8f9; }
 
   /* Typing indicator */
   .typing-indicator {
@@ -231,16 +240,21 @@ const STYLES = `
   }
   .chat-input:focus { border-color: rgba(139, 92, 246, 0.5); }
   .chat-input::placeholder { color: #64748b; }
-  .chat-send {
+  .chat-send, .chat-stop {
     background: rgba(99, 102, 241, 0.5); border: none; border-radius: 8px;
-    padding: 8px 16px; color: white; cursor: pointer; font-size: 14px; transition: background 0.2s;
+    width: 36px; height: 36px; color: white; cursor: pointer; transition: background 0.2s;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
-  .chat-send:hover { background: rgba(99, 102, 241, 0.7); }
+  .chat-send:hover, .chat-stop:hover { background: rgba(99, 102, 241, 0.7); }
   .chat-send:disabled { opacity: 0.4; cursor: not-allowed; }
+  .chat-stop { background: rgba(239, 68, 68, 0.5); }
+  .chat-stop:hover { background: rgba(239, 68, 68, 0.7); }
+  .chat-send svg, .chat-stop svg { width: 18px; height: 18px; }
 `
 
 export interface ChatOverlayCallbacks {
   onSend: (text: string) => void
+  onStop: () => void
   onSettingsChange: (settings: ChatSettings) => void
   onClearContext: () => void
   onDisableSite: () => void
@@ -254,6 +268,7 @@ export class ChatOverlay {
   private messagesEl: HTMLElement
   private inputEl: HTMLTextAreaElement
   private sendBtn: HTMLButtonElement
+  private stopBtn: HTMLButtonElement
   private statusEl: HTMLElement
   private settingsPanel: HTMLElement
   private thinkingTag: HTMLElement
@@ -403,9 +418,16 @@ export class ChatOverlay {
     this.inputEl.rows = 1
     this.sendBtn = document.createElement('button')
     this.sendBtn.className = 'chat-send'
-    this.sendBtn.textContent = 'Send'
+    this.sendBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>'
+
+    this.stopBtn = document.createElement('button')
+    this.stopBtn.className = 'chat-stop'
+    this.stopBtn.style.display = 'none'
+    this.stopBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>'
+
     inputArea.appendChild(this.inputEl)
     inputArea.appendChild(this.sendBtn)
+    inputArea.appendChild(this.stopBtn)
 
     this.container.appendChild(header)
     this.container.appendChild(this.settingsPanel)
@@ -415,6 +437,12 @@ export class ChatOverlay {
     this.shadow.appendChild(this.container)
 
     this.sendBtn.addEventListener('click', () => this.handleSend(callbacks.onSend))
+    this.stopBtn.addEventListener('click', () => callbacks.onStop())
+
+    for (const event of ['keydown', 'keyup', 'keypress'] as const) {
+      this.inputEl.addEventListener(event, (e) => e.stopPropagation())
+    }
+
     this.inputEl.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && !e.shiftKey) {
         e.preventDefault()
@@ -481,10 +509,14 @@ export class ChatOverlay {
 
   finalizeStream(fullText: string): void {
     if (!this.streamEl) {
-      this.addMessage(fullText, 'agent')
+      if (fullText) this.addMessage(fullText, 'agent')
       return
     }
-    this.streamEl.innerHTML = marked.parse(fullText) as string
+    if (!fullText) {
+      this.streamEl.remove()
+    } else {
+      this.streamEl.innerHTML = marked.parse(fullText) as string
+    }
     this.streamEl = null
     this.streamText = ''
     this.messagesEl.scrollTop = this.messagesEl.scrollHeight
@@ -507,6 +539,7 @@ export class ChatOverlay {
       msg.appendChild(header)
       msg.appendChild(body)
       msg.addEventListener('click', () => {
+        msg.classList.toggle('pinned')
         body.classList.toggle('collapsed')
         body.classList.toggle('expanded')
       })
@@ -527,7 +560,7 @@ export class ChatOverlay {
     }
   }
 
-  addMessage(text: string, type: 'user' | 'agent' | 'tool' | 'thinking'): void {
+  addMessage(text: string, type: 'user' | 'agent' | 'tool' | 'thinking' | 'stopped'): void {
     if (type === 'user' || type === 'agent') {
       this.hideTyping()
     }
@@ -549,6 +582,7 @@ export class ChatOverlay {
       msg.appendChild(header)
       msg.appendChild(body)
       msg.addEventListener('click', () => {
+        msg.classList.toggle('pinned')
         body.classList.toggle('collapsed')
         body.classList.toggle('expanded')
       })
@@ -606,9 +640,27 @@ export class ChatOverlay {
     this.statusEl.textContent = status
   }
 
+  private generating = false
+
   setInputEnabled(enabled: boolean): void {
     this.inputEl.disabled = !enabled
     this.sendBtn.disabled = !enabled
+    if (enabled) {
+      this.generating = false
+      this.sendBtn.style.display = 'flex'
+      this.stopBtn.style.display = 'none'
+    } else if (this.generating) {
+      this.sendBtn.style.display = 'none'
+      this.stopBtn.style.display = 'flex'
+    }
+  }
+
+  setGenerating(generating: boolean): void {
+    this.generating = generating
+    if (generating) {
+      this.sendBtn.style.display = 'none'
+      this.stopBtn.style.display = 'flex'
+    }
   }
 
   getElement(): HTMLElement {

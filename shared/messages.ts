@@ -26,6 +26,10 @@ export type ChatOpenMessage = {
   type: 'chat:open'
 }
 
+export type ChatStopMessage = {
+  type: 'chat:stop'
+}
+
 export type ToolResultMessage = {
   type: 'tool:result'
   requestId: string
@@ -111,6 +115,7 @@ export type OffscreenModelStatusMessage = {
 export type Message =
   | ChatSendMessage
   | ChatOpenMessage
+  | ChatStopMessage
   | SettingsUpdateMessage
   | ContextClearMessage
   | ToolResultMessage

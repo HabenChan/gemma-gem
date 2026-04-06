@@ -14,15 +14,21 @@ const DEFAULT_MAX_ITERATIONS = 10
 export class AgentLoop {
   private options: AgentLoopOptions
   private history: ConversationMessage[] = []
+  private aborted = false
 
   constructor(options: AgentLoopOptions) {
     this.options = options
+  }
+
+  abort(): void {
+    this.aborted = true
   }
 
   async run(userMessage: string): Promise<AgentRunResult> {
     const { model, tools, executor, systemPrompt, enableThinking = false } = this.options
     const maxIterations = this.options.maxIterations ?? DEFAULT_MAX_ITERATIONS
 
+    this.aborted = false
     this.history.push({ role: 'user', content: userMessage })
 
     let prompt = buildPrompt(systemPrompt, tools, this.history, enableThinking)
@@ -31,6 +37,11 @@ export class AgentLoop {
     let pendingImageDataUrl: string | undefined
 
     while (iterations < maxIterations) {
+      if (this.aborted) {
+        const response = 'Generation stopped.'
+        this.history.push({ role: 'model', content: response })
+        return { response, toolCallCount, iterations }
+      }
       iterations++
 
       log.debug('Agent iteration', iterations, 'prompt length:', prompt.length, 'hasImage:', !!pendingImageDataUrl)

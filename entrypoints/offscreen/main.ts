@@ -149,6 +149,15 @@ chrome.runtime.onMessage.addListener((message: Message) => {
       break
     }
 
+    case 'chat:stop': {
+      log.info('Generation stopped by user')
+      modelHost.abort()
+      if (currentAgent) {
+        currentAgent.abort()
+      }
+      break
+    }
+
     case 'context:clear': {
       log.info('Context cleared')
       if (currentAgent) {

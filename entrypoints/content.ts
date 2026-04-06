@@ -53,10 +53,21 @@ export default defineContentScript({
 
     const chat = new ChatOverlay({
       onSend(text) {
+        stopped = false
+        chat.setGenerating(true)
         chat.setInputEnabled(false)
         chat.setModelSwitchEnabled(false)
         chat.showTyping()
         safeSend({ type: 'chat:send', text, settings: chat.settings } as any)
+      },
+      onStop() {
+        stopped = true
+        safeSend({ type: 'chat:stop' } as any)
+        chat.finalizeThinkingStream()
+        chat.finalizeStream('')
+        chat.addMessage('Stopped', 'stopped')
+        chat.setInputEnabled(true)
+        chat.setModelSwitchEnabled(true)
       },
       onSettingsChange(settings: ChatSettings) {
         safeSend({ type: 'settings:update', settings } as any)
@@ -84,6 +95,7 @@ export default defineContentScript({
 
     let modelReady = false
     let shownLoadingMessage = false
+    let stopped = false
 
     const icon = createGemIcon(() => {
       if (siteDisabled) {
@@ -108,6 +120,7 @@ export default defineContentScript({
     browser.runtime.onMessage.addListener((message: Message) => {
       switch (message.type) {
         case 'agent:response':
+          if (stopped) break
           chat.finalizeThinkingStream()
           chat.finalizeStream(message.text)
           chat.setInputEnabled(true)
@@ -115,12 +128,13 @@ export default defineContentScript({
           break
 
         case 'agent:chunk':
+          if (stopped) break
           if (message.text.startsWith('[Tool]')) {
             chat.finalizeThinkingStream()
             chat.addMessage(message.text, 'tool')
           } else if (message.text.startsWith('[Thinking]')) {
             chat.appendThinkingStream(message.text.replace(/^\[Thinking\]\s*/, ''))
-          } else {
+          } else if (message.text.trim()) {
             chat.finalizeThinkingStream()
             chat.appendStream(message.text)
           }

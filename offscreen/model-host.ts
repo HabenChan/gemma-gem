@@ -42,6 +42,7 @@ export class GemmaModelHost implements ModelBackend {
   private currentModelId: ModelId | null = null
   private loadingModelId: ModelId | null = null
   private onStatus: StatusCallback
+  private abortController: AbortController | null = null
 
   constructor(onStatus: StatusCallback) {
     this.onStatus = onStatus
@@ -129,6 +130,13 @@ export class GemmaModelHost implements ModelBackend {
     return this.currentModelId ?? this.loadingModelId
   }
 
+  abort(): void {
+    if (this.abortController) {
+      this.abortController.abort()
+      this.abortController = null
+    }
+  }
+
   async generate(prompt: string, options?: GenerateOptions): Promise<string> {
     if (!this.model || !this.processor) {
       throw new Error('Model not loaded')
@@ -198,16 +206,24 @@ export class GemmaModelHost implements ModelBackend {
     }
 
     log.debug('Step 3: generating')
+    this.abortController = new AbortController()
     try {
       await this.model.generate({
         ...inputs,
         max_new_tokens: options?.maxTokens ?? 1024,
         do_sample: false,
         streamer,
+        abort_signal: this.abortController.signal,
       })
     } catch (e) {
+      if (e instanceof DOMException && e.name === 'AbortError') {
+        log.info('Generation aborted by user')
+        return rawResult
+      }
       log.error('FAILED at model.generate():', e)
       throw e
+    } finally {
+      this.abortController = null
     }
 
     log.debug('Raw output:', rawResult.slice(0, 300))

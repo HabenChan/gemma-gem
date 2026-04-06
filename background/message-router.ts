@@ -45,6 +45,12 @@ async function handleMessage(message: Message, sender: chrome.runtime.MessageSen
       return
     }
 
+    case 'chat:stop': {
+      log.debug('chat:stop')
+      sendToRuntime(message)
+      return
+    }
+
     case 'context:clear': {
       log.debug('context:clear')
       sendToRuntime(message)
