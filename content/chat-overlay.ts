@@ -178,7 +178,7 @@ const STYLES = `
   .message-thinking:hover { opacity: 1; }
   .message-thinking.pinned { opacity: 1; }
   .thinking-header {
-    font-weight: 600; margin-bottom: 4px;
+    font-weight: 600; margin-bottom: 4px; user-select: none;
   }
   .thinking-body {
     position: relative; overflow: hidden; transition: max-height 0.3s ease;
